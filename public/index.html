@@ -1,0 +1,128 @@
+const express = require('express');
+const path = require('path');
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+app.use(express.static(path.join(__dirname, 'public')));
+
+const employees = [
+  {
+    id: 1,
+    name: 'Camille Martin',
+    role: 'Chargée de recrutement',
+    department: 'RH',
+    status: 'active',
+    email: 'camille@hiver.fr',
+    startDate: '2024-01-15'
+  },
+  {
+    id: 2,
+    name: 'Nicolas Dubois',
+    role: 'Gestionnaire paie',
+    department: 'Finance',
+    status: 'active',
+    email: 'nicolas@hiver.fr',
+    startDate: '2023-06-01'
+  },
+  {
+    id: 3,
+    name: 'Sarah Morel',
+    role: 'Manager produit',
+    department: 'Produit',
+    status: 'on_leave',
+    email: 'sarah@hiver.fr',
+    startDate: '2022-09-12'
+  }
+];
+
+const absences = [
+  {
+    id: 1,
+    employee: 'Sarah Morel',
+    type: 'Congé',
+    startDate: '2026-11-10',
+    endDate: '2026-11-15',
+    status: 'Approuvée'
+  },
+  {
+    id: 2,
+    employee: 'Camille Martin',
+    type: 'RTT',
+    startDate: '2026-11-20',
+    endDate: '2026-11-20',
+    status: 'En attente'
+  }
+];
+
+app.get('/api/summary', (req, res) => {
+  const total = employees.length;
+  const active = employees.filter((employee) => employee.status === 'active').length;
+  const onLeave = employees.filter((employee) => employee.status === 'on_leave').length;
+  const pendingAbsences = absences.filter((absence) => absence.status === 'En attente').length;
+
+  res.json({
+    total,
+    active,
+    onLeave,
+    pendingAbsences
+  });
+});
+
+app.get('/api/employees', (req, res) => {
+  res.json(employees);
+});
+
+app.post('/api/employees', (req, res) => {
+  const { name, role, department, status, email, startDate } = req.body || {};
+
+  if (!name || !role || !department || !email) {
+    return res.status(400).json({ error: 'Les champs name, role, department et email sont requis.' });
+  }
+
+  const newEmployee = {
+    id: Date.now(),
+    name,
+    role,
+    department,
+    status: status || 'active',
+    email,
+    startDate: startDate || new Date().toISOString().slice(0, 10)
+  };
+
+  employees.push(newEmployee);
+  res.status(201).json(newEmployee);
+});
+
+app.get('/api/absences', (req, res) => {
+  res.json(absences);
+});
+
+app.post('/api/absences', (req, res) => {
+  const { employee, type, startDate, endDate, status } = req.body || {};
+
+  if (!employee || !type || !startDate || !endDate) {
+    return res.status(400).json({ error: 'Les champs employee, type, startDate et endDate sont requis.' });
+  }
+
+  const newAbsence = {
+    id: Date.now(),
+    employee,
+    type,
+    startDate,
+    endDate,
+    status: status || 'En attente'
+  };
+
+  absences.push(newAbsence);
+  res.status(201).json(newAbsence);
+});
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+app.listen(PORT, () => {
+  console.log(`Hiver is running on http://localhost:${PORT}`);
+});

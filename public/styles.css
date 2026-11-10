@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hiver - Suivi RH</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">H</div>
+          <div>
+            <h1>Hiver</h1>
+            <p>Suivi RH</p>
+          </div>
+        </div>
+
+        <nav>
+          <a class="active" href="#">Tableau de bord</a>
+          <a href="#employees-section">Employés</a>
+          <a href="#absences-section">Absences</a>
+        </nav>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Vue d'ensemble</p>
+            <h2>Dashboard RH</h2>
+          </div>
+          <button class="primary-btn">+ Nouvelle demande</button>
+        </header>
+
+        <section class="cards-grid" id="summary-cards"></section>
+
+        <section class="panel" id="employees-section">
+          <div class="section-header">
+            <h3>Employés</h3>
+          </div>
+
+          <div class="form-grid">
+            <form id="employee-form">
+              <input type="text" name="name" placeholder="Nom" required />
+              <input type="text" name="role" placeholder="Poste" required />
+              <input type="text" name="department" placeholder="Département" required />
+              <input type="email" name="email" placeholder="Email" required />
+              <input type="date" name="startDate" />
+              <select name="status">
+                <option value="active">Actif</option>
+                <option value="on_leave">En congé</option>
+              </select>
+              <button type="submit" class="primary-btn">Ajouter</button>
+            </form>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Poste</th>
+                  <th>Département</th>
+                  <th>Email</th>
+                  <th>Statut</th>
+                </tr>
+              </thead>
+              <tbody id="employees-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="absences-section">
+          <div class="section-header">
+            <h3>Absences</h3>
+          </div>
+
+          <div class="form-grid">
+            <form id="absence-form">
+              <input type="text" name="employee" placeholder="Employé" required />
+              <select name="type">
+                <option value="Congé">Congé</option>
+                <option value="RTT">RTT</option>
+                <option value="Maladie">Maladie</option>
+                <option value="Formation">Formation</option>
+              </select>
+              <input type="date" name="startDate" required />
+              <input type="date" name="endDate" required />
+              <select name="status">
+                <option value="En attente">En attente</option>
+                <option value="Approuvée">Approuvée</option>
+                <option value="Refusée">Refusée</option>
+              </select>
+              <button type="submit" class="primary-btn">Ajouter</button>
+            </form>
+          </div>
+
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Employé</th>
+                  <th>Type</th>
+                  <th>Début</th>
+                  <th>Fin</th>
+                  <th>Statut</th>
+                </tr>
+              </thead>
+              <tbody id="absences-table-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,146 @@
+const summaryCards = document.getElementById('summary-cards');
+const employeesTableBody = document.getElementById('employees-table-body');
+const absencesTableBody = document.getElementById('absences-table-body');
+
+const employeeForm = document.getElementById('employee-form');
+const absenceForm = document.getElementById('absence-form');
+
+const cardConfig = [
+  { label: 'Total employés', key: 'total' },
+  { label: 'Actifs', key: 'active' },
+  { label: 'En congé', key: 'onLeave' },
+  { label: 'Demandes en attente', key: 'pendingAbsences' }
+];
+
+const renderCards = (data) => {
+  summaryCards.innerHTML = cardConfig
+    .map(
+      (card) => `
+        <article class="card">
+          <p class="label">${card.label}</p>
+          <span class="value">${data[card.key]}</span>
+          <span class="trend">+12% vs mois dernier</span>
+        </article>
+      `
+    )
+    .join('');
+};
+
+const statusClass = (status) => {
+  const normalized = status?.toLowerCase();
+
+  if (normalized === 'active') return 'active';
+  if (normalized === 'on_leave') return 'on_leave';
+  if (normalized === 'en attente') return 'pending';
+  if (normalized === 'approuvée') return 'approved';
+  if (normalized === 'refusée') return 'rejected';
+
+  return 'pending';
+};
+
+const formatStatus = (status) => {
+  if (!status) return '—';
+  return status;
+};
+
+const renderEmployees = (employees) => {
+  employeesTableBody.innerHTML = employees
+    .map(
+      (employee) => `
+        <tr>
+          <td>${employee.name}</td>
+          <td>${employee.role}</td>
+          <td>${employee.department}</td>
+          <td>${employee.email}</td>
+          <td><span class="badge ${statusClass(employee.status)}">${formatStatus(employee.status === 'active' ? 'Actif' : 'En congé')}</span></td>
+        </tr>
+      `
+    )
+    .join('');
+};
+
+const renderAbsences = (absences) => {
+  absencesTableBody.innerHTML = absences
+    .map(
+      (absence) => `
+        <tr>
+          <td>${absence.employee}</td>
+          <td>${absence.type}</td>
+          <td>${absence.startDate}</td>
+          <td>${absence.endDate}</td>
+          <td><span class="badge ${statusClass(absence.status)}">${absence.status}</span></td>
+        </tr>
+      `
+    )
+    .join('');
+};
+
+const loadDashboard = async () => {
+  try {
+    const [summaryRes, employeesRes, absencesRes] = await Promise.all([
+      fetch('/api/summary'),
+      fetch('/api/employees'),
+      fetch('/api/absences')
+    ]);
+
+    const summary = await summaryRes.json();
+    const employees = await employeesRes.json();
+    const absences = await absencesRes.json();
+
+    renderCards(summary);
+    renderEmployees(employees);
+    renderAbsences(absences);
+  } catch (error) {
+    console.error('Erreur lors du chargement du dashboard:', error);
+  }
+};
+
+employeeForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const formData = new FormData(employeeForm);
+  const payload = Object.fromEntries(formData.entries());
+
+  try {
+    const response = await fetch('/api/employees', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error('Impossible d’ajouter l’employé');
+    }
+
+    employeeForm.reset();
+    await loadDashboard();
+  } catch (error) {
+    console.error(error);
+  }
+});
+
+absenceForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  const formData = new FormData(absenceForm);
+  const payload = Object.fromEntries(formData.entries());
+
+  try {
+    const response = await fetch('/api/absences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!response.ok) {
+      throw new Error('Impossible d’ajouter l’absence');
+    }
+
+    absenceForm.reset();
+    await loadDashboard();
+  } catch (error) {
+    console.error(error);
+  }
+});
+
+loadDashboard();
