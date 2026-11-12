@@ -1,515 +1,297 @@
 import { useEffect, useMemo, useState } from 'react';
 
-const loginDefaults = {
-  email: 'admin@hiver.fr',
-  password: 'admin123'
+const initialStats = {
+  total: 0,
+  active: 0,
+  onLeave: 0,
+  pendingAbsences: 0,
+  approvedAbsences: 0,
+  attendanceRate: 0,
+  departmentBreakdown: {},
+  trend: []
 };
 
-const statusBadge = (status) => {
-  const value = String(status || '').toLowerCase();
-  if (value.includes('active')) return 'success';
-  if (value.includes('congé') || value.includes('on_leave')) return 'warning';
-  if (value.includes('attente')) return 'primary';
-  if (value.includes('approuv')) return 'success';
-  if (value.includes('refus')) return 'danger';
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    ...options,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...options.headers
+    }
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || 'La requête a échoué.');
+  return data;
+}
+
+function statusBadge(status) {
+  if (status === 'active' || status === 'Approuvée') return 'success';
+  if (status === 'on_leave') return 'warning';
+  if (status === 'En attente') return 'primary';
+  if (status === 'Refusée') return 'danger';
   return 'neutral';
-};
+}
 
-function StatCard({ label, value, delta, tone = 'primary' }) {
+function StatCard({ label, value, note, tone }) {
   return (
-    <div className={`stat-card tone-${tone}`}>
+    <article className={`stat-card tone-${tone}`}>
       <p>{label}</p>
       <strong>{value}</strong>
-      <span>{delta}</span>
-    </div>
+      <span>{note}</span>
+    </article>
   );
 }
 
-function Dashboard({
-  user,
-  stats,
-  employees,
-  absences,
-  onCreateEmployee,
-  onCreateAbsence,
-  onLogout
-}) {
-  const [employeeForm, setEmployeeForm] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    role: '',
-    department: 'RH',
-    status: 'active',
-    startDate: ''
-  });
-
-  const [absenceForm, setAbsenceForm] = useState({
-    employee: '',
-    type: 'Congé',
-    startDate: '',
-    endDate: '',
-    status: 'En attente'
-  });
-
+function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreateAbsence, onDecideAbsence, onLogout }) {
+  const [employeeForm, setEmployeeForm] = useState({ firstName: '', lastName: '', email: '', role: '', department: 'RH', status: 'active', startDate: '' });
+  const [absenceForm, setAbsenceForm] = useState({ employeeId: String(user.id), type: 'Congé', startDate: '', endDate: '' });
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [absenceSearch, setAbsenceSearch] = useState('');
   const [absenceFilter, setAbsenceFilter] = useState('all');
-
-  const isAdmin = user?.role === 'admin';
-  const departmentEntries = Object.entries(stats.departmentBreakdown || {});
+  const [formError, setFormError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const isAdmin = user.role === 'admin';
 
   const filteredEmployees = useMemo(() => {
     const query = employeeSearch.trim().toLowerCase();
-
-    return employees.filter((employee) => {
-      const candidate = `${employee.firstName} ${employee.lastName} ${employee.email} ${employee.department}`.toLowerCase();
-      return !query || candidate.includes(query);
-    });
+    return employees.filter((employee) => `${employee.firstName} ${employee.lastName} ${employee.email} ${employee.department}`.toLowerCase().includes(query));
   }, [employees, employeeSearch]);
 
   const filteredAbsences = useMemo(() => {
     const query = absenceSearch.trim().toLowerCase();
-
     return absences.filter((absence) => {
-      const candidate = `${absence.employee} ${absence.type} ${absence.status}`.toLowerCase();
-      const matchesSearch = !query || candidate.includes(query);
-      const matchesFilter = absenceFilter === 'all' || absence.status === absenceFilter;
-      return matchesSearch && matchesFilter;
+      const matchesQuery = `${absence.employee} ${absence.type} ${absence.status}`.toLowerCase().includes(query);
+      return matchesQuery && (absenceFilter === 'all' || absence.status === absenceFilter);
     });
   }, [absences, absenceFilter, absenceSearch]);
 
-  const employeeSummary = useMemo(() => {
-    return employees.reduce((acc, employee) => {
-      acc[employee.department] = (acc[employee.department] || 0) + 1;
-      return acc;
-    }, {});
-  }, [employees]);
-
-  const handleEmployeeSubmit = async (event) => {
+  async function submitEmployee(event) {
     event.preventDefault();
-    await onCreateEmployee(employeeForm);
-    setEmployeeForm({
-      firstName: '',
-      lastName: '',
-      email: '',
-      role: '',
-      department: 'RH',
-      status: 'active',
-      startDate: ''
-    });
-  };
+    setFormError('');
+    setBusy(true);
+    try {
+      await onCreateEmployee(employeeForm);
+      setEmployeeForm({ firstName: '', lastName: '', email: '', role: '', department: 'RH', status: 'active', startDate: '' });
+    } catch (error) {
+      setFormError(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  const handleAbsenceSubmit = async (event) => {
+  async function submitAbsence(event) {
     event.preventDefault();
-    await onCreateAbsence(absenceForm);
-    setAbsenceForm({
-      employee: '',
-      type: 'Congé',
-      startDate: '',
-      endDate: '',
-      status: 'En attente'
-    });
-  };
+    setFormError('');
+    setBusy(true);
+    try {
+      await onCreateAbsence({ ...absenceForm, employeeId: Number(absenceForm.employeeId) });
+      setAbsenceForm((current) => ({ ...current, startDate: '', endDate: '' }));
+    } catch (error) {
+      setFormError(error.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function decide(id, status) {
+    setFormError('');
+    try {
+      await onDecideAbsence(id, status);
+    } catch (error) {
+      setFormError(error.message);
+    }
+  }
 
   return (
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand-block">
           <div className="brand-icon">H</div>
-          <div>
-            <h1>Hiver</h1>
-            <span>People Ops</span>
-          </div>
+          <div><h1>Hiver</h1><span>Suivi RH</span></div>
         </div>
-
-        <nav className="nav-menu">
-          <a href="#overview" className="active">Overview</a>
+        <nav className="nav-menu" aria-label="Navigation principale">
+          <a href="#overview">Vue d’ensemble</a>
           <a href="#employees">Employés</a>
           <a href="#absences">Absences</a>
           <a href="#reports">Rapports</a>
         </nav>
-
         <div className="user-card">
           <p>Connecté</p>
-          <strong>{user?.firstName} {user?.lastName}</strong>
-          <small>{user?.role === 'admin' ? 'Administrateur' : 'Employé'}</small>
+          <strong>{user.firstName} {user.lastName}</strong>
+          <small>{isAdmin ? 'Administrateur' : 'Employé'}</small>
           <button type="button" onClick={onLogout}>Déconnexion</button>
         </div>
       </aside>
 
       <main className="content">
         <header className="topbar" id="overview">
-          <div>
-            <p className="eyebrow">Vue d’ensemble</p>
-            <h2>Tableau de bord RH</h2>
-          </div>
+          <div><p className="eyebrow">Espace de gestion</p><h2>Tableau de bord RH</h2></div>
           <div className="chip">{stats.attendanceRate}% de présence</div>
         </header>
 
-        <section className="stats-grid">
-          <StatCard label="Total employés" value={stats.total} delta="+8% ce mois" tone="primary" />
-          <StatCard label="Actifs" value={stats.active} delta="Stable" tone="success" />
-          <StatCard label="En congé" value={stats.onLeave} delta="2 en cours" tone="warning" />
-          <StatCard label="Demandes en attente" value={stats.pendingAbsences} delta={`${stats.approvedAbsences} validées`} tone="primary" />
+        {formError && <p className="error-box" role="alert">{formError}</p>}
+
+        <section className="stats-grid" aria-label="Indicateurs RH">
+          <StatCard label="Total employés" value={stats.total} note="Dans l’organisation" tone="primary" />
+          <StatCard label="Actifs" value={stats.active} note="Statut actif" tone="success" />
+          <StatCard label="En congé" value={stats.onLeave} note="Statut en congé" tone="warning" />
+          <StatCard label="En attente" value={stats.pendingAbsences} note={`${stats.approvedAbsences} demandes approuvées`} tone="primary" />
         </section>
 
-        <section className="panel-grid">
-          <div className="panel report-panel">
-            <div className="panel-header">
-              <h3>Répartition par service</h3>
-            </div>
+        <section className="panel-grid" id="reports">
+          <div className="panel">
+            <div className="panel-header"><h3>Répartition par service</h3></div>
             <div className="bars">
-              {departmentEntries.map(([department, count]) => (
+              {Object.entries(stats.departmentBreakdown).map(([department, count]) => (
                 <div key={department} className="bar-row">
-                  <label>{department}</label>
-                  <div className="bar-track">
-                    <span style={{ width: `${(count / Math.max(stats.total, 1)) * 100}%` }} />
-                  </div>
-                  <strong>{count}</strong>
+                  <label>{department}</label><div className="bar-track"><span style={{ width: `${(count / Math.max(stats.total, 1)) * 100}%` }} /></div><strong>{count}</strong>
                 </div>
               ))}
+              {stats.total === 0 && <p className="empty-state">Aucune donnée à afficher.</p>}
             </div>
           </div>
-
-          <div className="panel report-panel" id="reports">
-            <div className="panel-header">
-              <h3>Évolution RH</h3>
-            </div>
-            <div className="mini-chart">
-              {stats.trend.map((point) => (
-                <div key={point.month} className="mini-item">
-                  <span className="mini-bar" style={{ height: `${point.value * 2.5}px` }} />
-                  <label>{point.month}</label>
-                </div>
-              ))}
+          <div className="panel">
+            <div className="panel-header"><h3>Évolution RH</h3><span>Effectif mensuel</span></div>
+            <div className="mini-chart" aria-label="Évolution mensuelle des effectifs">
+              {stats.trend.map((point) => <div key={point.month} className="mini-item"><span className="mini-bar" style={{ height: `${point.value * 2.5}px` }} /><label>{point.month}</label></div>)}
             </div>
           </div>
         </section>
 
         <section className="panel" id="employees">
-          <div className="panel-header">
-            <h3>Employés</h3>
-            <span>{employees.length} personnes</span>
-          </div>
-
+          <div className="panel-header"><h3>Employés</h3><span>{employees.length} personnes</span></div>
           {isAdmin && (
-            <form className="form-grid" onSubmit={handleEmployeeSubmit}>
-              <input value={employeeForm.firstName} onChange={(e) => setEmployeeForm({ ...employeeForm, firstName: e.target.value })} placeholder="Prénom" required />
-              <input value={employeeForm.lastName} onChange={(e) => setEmployeeForm({ ...employeeForm, lastName: e.target.value })} placeholder="Nom" required />
-              <input value={employeeForm.email} onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })} placeholder="Email" type="email" required />
-              <input value={employeeForm.role} onChange={(e) => setEmployeeForm({ ...employeeForm, role: e.target.value })} placeholder="Poste" required />
-              <select value={employeeForm.department} onChange={(e) => setEmployeeForm({ ...employeeForm, department: e.target.value })}>
-                <option value="RH">RH</option>
-                <option value="Finance">Finance</option>
-                <option value="Produit">Produit</option>
-                <option value="IT">IT</option>
-                <option value="Marketing">Marketing</option>
-              </select>
-              <select value={employeeForm.status} onChange={(e) => setEmployeeForm({ ...employeeForm, status: e.target.value })}>
-                <option value="active">Actif</option>
-                <option value="on_leave">En congé</option>
-              </select>
-              <input value={employeeForm.startDate} onChange={(e) => setEmployeeForm({ ...employeeForm, startDate: e.target.value })} type="date" />
-              <button type="submit">Ajouter</button>
+            <form className="form-grid" onSubmit={submitEmployee}>
+              <input aria-label="Prénom" value={employeeForm.firstName} onChange={(e) => setEmployeeForm({ ...employeeForm, firstName: e.target.value })} placeholder="Prénom" required />
+              <input aria-label="Nom" value={employeeForm.lastName} onChange={(e) => setEmployeeForm({ ...employeeForm, lastName: e.target.value })} placeholder="Nom" required />
+              <input aria-label="Email" value={employeeForm.email} onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })} placeholder="Email professionnel" type="email" required />
+              <input aria-label="Poste" value={employeeForm.role} onChange={(e) => setEmployeeForm({ ...employeeForm, role: e.target.value })} placeholder="Poste" required />
+              <input aria-label="Service" value={employeeForm.department} onChange={(e) => setEmployeeForm({ ...employeeForm, department: e.target.value })} placeholder="Service" required />
+              <select aria-label="Statut" value={employeeForm.status} onChange={(e) => setEmployeeForm({ ...employeeForm, status: e.target.value })}><option value="active">Actif</option><option value="on_leave">En congé</option></select>
+              <input aria-label="Date d’embauche" value={employeeForm.startDate} onChange={(e) => setEmployeeForm({ ...employeeForm, startDate: e.target.value })} type="date" />
+              <button type="submit" disabled={busy}>{busy ? 'Enregistrement…' : 'Ajouter'}</button>
             </form>
           )}
-
-          <div className="toolbar">
-            <input
-              type="search"
-              value={employeeSearch}
-              onChange={(e) => setEmployeeSearch(e.target.value)}
-              placeholder="Rechercher un employé"
-            />
-          </div>
-
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nom</th>
-                  <th>Poste</th>
-                  <th>Service</th>
-                  <th>Email</th>
-                  <th>Statut</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredEmployees.length > 0 ? filteredEmployees.map((employee) => (
-                  <tr key={employee.id}>
-                    <td>{employee.firstName} {employee.lastName}</td>
-                    <td>{employee.role}</td>
-                    <td>{employee.department}</td>
-                    <td>{employee.email}</td>
-                    <td>
-                      <span className={`badge ${statusBadge(employee.status)}`}>
-                        {employee.status === 'active' ? 'Actif' : 'En congé'}
-                      </span>
-                    </td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan="5" className="empty-state">Aucun employé correspondant.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <div className="toolbar"><input type="search" aria-label="Rechercher un employé" value={employeeSearch} onChange={(e) => setEmployeeSearch(e.target.value)} placeholder="Rechercher un employé" /></div>
+          <div className="table-wrap"><table>
+            <thead><tr><th>Nom</th><th>Poste</th><th>Service</th><th>Email</th><th>Statut</th></tr></thead>
+            <tbody>{filteredEmployees.length ? filteredEmployees.map((employee) => (
+              <tr key={employee.id}><td>{employee.firstName} {employee.lastName}</td><td>{employee.role}</td><td>{employee.department}</td><td>{employee.email}</td><td><span className={`badge ${statusBadge(employee.status)}`}>{employee.status === 'active' ? 'Actif' : 'En congé'}</span></td></tr>
+            )) : <tr><td colSpan="5" className="empty-state">Aucun employé correspondant.</td></tr>}</tbody>
+          </table></div>
         </section>
 
         <section className="panel" id="absences">
-          <div className="panel-header">
-            <h3>Demandes d’absence</h3>
-            <span>{absences.length} demandes</span>
-          </div>
-
-          <form className="form-grid" onSubmit={handleAbsenceSubmit}>
-            <input value={absenceForm.employee} onChange={(e) => setAbsenceForm({ ...absenceForm, employee: e.target.value })} placeholder="Employé" required />
-            <select value={absenceForm.type} onChange={(e) => setAbsenceForm({ ...absenceForm, type: e.target.value })}>
-              <option value="Congé">Congé</option>
-              <option value="RTT">RTT</option>
-              <option value="Maladie">Maladie</option>
-              <option value="Formation">Formation</option>
-            </select>
-            <input value={absenceForm.startDate} onChange={(e) => setAbsenceForm({ ...absenceForm, startDate: e.target.value })} type="date" required />
-            <input value={absenceForm.endDate} onChange={(e) => setAbsenceForm({ ...absenceForm, endDate: e.target.value })} type="date" required />
-            <select value={absenceForm.status} onChange={(e) => setAbsenceForm({ ...absenceForm, status: e.target.value })}>
-              <option value="En attente">En attente</option>
-              <option value="Approuvée">Approuvée</option>
-              <option value="Refusée">Refusée</option>
-            </select>
-            <button type="submit">Soumettre</button>
+          <div className="panel-header"><h3>Demandes d’absence</h3><span>{absences.length} demandes visibles</span></div>
+          <form className="form-grid" onSubmit={submitAbsence}>
+            {isAdmin && <select aria-label="Employé concerné" value={absenceForm.employeeId} onChange={(e) => setAbsenceForm({ ...absenceForm, employeeId: e.target.value })} required>
+              <option value="">Sélectionner un employé</option>{employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.firstName} {employee.lastName}</option>)}
+            </select>}
+            {!isAdmin && <input value={`${user.firstName} ${user.lastName}`} aria-label="Employé concerné" disabled />}
+            <select aria-label="Type d’absence" value={absenceForm.type} onChange={(e) => setAbsenceForm({ ...absenceForm, type: e.target.value })}><option>Congé</option><option>RTT</option><option>Maladie</option><option>Formation</option></select>
+            <label className="field-label">Début<input aria-label="Date de début" value={absenceForm.startDate} onChange={(e) => setAbsenceForm({ ...absenceForm, startDate: e.target.value })} type="date" required /></label>
+            <label className="field-label">Fin<input aria-label="Date de fin" value={absenceForm.endDate} onChange={(e) => setAbsenceForm({ ...absenceForm, endDate: e.target.value })} type="date" min={absenceForm.startDate || undefined} required /></label>
+            <button type="submit" disabled={busy}>{busy ? 'Envoi…' : 'Soumettre la demande'}</button>
           </form>
-
+          <p className="form-hint">Les nouvelles demandes sont enregistrées « En attente » et doivent être validées par un administrateur.</p>
           <div className="toolbar">
-            <input
-              type="search"
-              value={absenceSearch}
-              onChange={(e) => setAbsenceSearch(e.target.value)}
-              placeholder="Rechercher une demande"
-            />
-            <select value={absenceFilter} onChange={(e) => setAbsenceFilter(e.target.value)}>
-              <option value="all">Tous les statuts</option>
-              <option value="En attente">En attente</option>
-              <option value="Approuvée">Approuvée</option>
-              <option value="Refusée">Refusée</option>
-            </select>
+            <input type="search" aria-label="Rechercher une demande" value={absenceSearch} onChange={(e) => setAbsenceSearch(e.target.value)} placeholder="Rechercher une demande" />
+            <select aria-label="Filtrer par statut" value={absenceFilter} onChange={(e) => setAbsenceFilter(e.target.value)}><option value="all">Tous les statuts</option><option>En attente</option><option>Approuvée</option><option>Refusée</option></select>
           </div>
-
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Employé</th>
-                  <th>Type</th>
-                  <th>Début</th>
-                  <th>Fin</th>
-                  <th>Statut</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredAbsences.length > 0 ? filteredAbsences.map((absence) => (
-                  <tr key={absence.id}>
-                    <td>{absence.employee}</td>
-                    <td>{absence.type}</td>
-                    <td>{absence.startDate}</td>
-                    <td>{absence.endDate}</td>
-                    <td>
-                      <span className={`badge ${statusBadge(absence.status)}`}>
-                        {absence.status}
-                      </span>
-                    </td>
-                  </tr>
-                )) : (
-                  <tr>
-                    <td colSpan="5" className="empty-state">Aucune demande d’absence trouvée.</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <div className="table-wrap"><table>
+            <thead><tr><th>Employé</th><th>Type</th><th>Début</th><th>Fin</th><th>Statut</th>{isAdmin && <th>Décision</th>}</tr></thead>
+            <tbody>{filteredAbsences.length ? filteredAbsences.map((absence) => (
+              <tr key={absence.id}><td>{absence.employee}</td><td>{absence.type}</td><td>{absence.startDate}</td><td>{absence.endDate}</td><td><span className={`badge ${statusBadge(absence.status)}`}>{absence.status}</span></td>{isAdmin && <td>{absence.status === 'En attente' ? <div className="row-actions"><button type="button" className="approve-button" onClick={() => decide(absence.id, 'Approuvée')}>Approuver</button><button type="button" className="reject-button" onClick={() => decide(absence.id, 'Refusée')}>Refuser</button></div> : '—'}</td>}</tr>
+            )) : <tr><td colSpan={isAdmin ? 6 : 5} className="empty-state">Aucune demande d’absence trouvée.</td></tr>}</tbody>
+          </table></div>
         </section>
       </main>
     </div>
   );
 }
 
-function LoginScreen({ form, onChange, onSubmit, error }) {
+function LoginScreen({ onLogin, error, busy }) {
+  const [email, setEmail] = useState('admin@hiver.fr');
+  const [password, setPassword] = useState('admin123');
   return (
-    <div className="login-shell">
-      <div className="login-card">
-        <div className="brand-block center">
-          <div className="brand-icon">H</div>
-          <div>
-            <h1>Hiver</h1>
-            <span>Suivi RH</span>
-          </div>
-        </div>
-
-        <h2>Connexion</h2>
-        <p className="login-subtitle">Accédez à votre espace RH</p>
-
-        <form onSubmit={onSubmit} className="login-form">
-          <label>
-            Email
-            <input type="email" value={form.email} onChange={(e) => onChange('email', e.target.value)} required />
-          </label>
-          <label>
-            Mot de passe
-            <input type="password" value={form.password} onChange={(e) => onChange('password', e.target.value)} required />
-          </label>
-
-          {error && <div className="error-box">{error}</div>}
-
-          <button type="submit">Se connecter</button>
-        </form>
-
-        <div className="demo-credentials">
-          <p>Compte de démonstration</p>
-          <small>admin@hiver.fr / admin123</small>
-          <small>employee@hiver.fr / employee123</small>
-        </div>
-      </div>
-    </div>
+    <div className="login-shell"><div className="login-card">
+      <div className="brand-block center"><div className="brand-icon">H</div><div><h1>Hiver</h1><span>Suivi RH</span></div></div>
+      <h2>Connexion</h2><p className="login-subtitle">Accédez à votre espace RH</p>
+      <form onSubmit={(event) => { event.preventDefault(); onLogin({ email, password }); }} className="login-form">
+        <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+        <label>Mot de passe<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        {error && <div className="error-box" role="alert">{error}</div>}
+        <button type="submit" disabled={busy}>{busy ? 'Connexion…' : 'Se connecter'}</button>
+      </form>
+      <div className="demo-credentials"><p>Comptes de démonstration</p><small>admin@hiver.fr / admin123</small><small>employee@hiver.fr / employee123</small><small>Les comptes de démonstration ne conviennent pas à une mise en production.</small></div>
+    </div></div>
   );
 }
 
 export default function App() {
   const [session, setSession] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [loginForm, setLoginForm] = useState(loginDefaults);
-  const [loginError, setLoginError] = useState('');
-  const [dashboard, setDashboard] = useState({
-    total: 0,
-    active: 0,
-    onLeave: 0,
-    pendingAbsences: 0,
-    approvedAbsences: 0,
-    attendanceRate: 0,
-    departmentBreakdown: {},
-    trend: []
-  });
+  const [loading, setLoading] = useState(true);
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [stats, setStats] = useState(initialStats);
   const [employees, setEmployees] = useState([]);
   const [absences, setAbsences] = useState([]);
 
-  const fetchSession = async () => {
-    try {
-      const response = await fetch('/api/auth/session');
-      const data = await response.json();
-      if (data.authenticated) {
-        setSession(data.user);
-        await Promise.all([fetchDashboard(), fetchEmployees(), fetchAbsences()]);
-      }
-    } catch (error) {
-      console.error('Erreur de session', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const fetchDashboard = async () => {
-    const response = await fetch('/api/dashboard');
-    const data = await response.json();
-    setDashboard(data);
-  };
-
-  const fetchEmployees = async () => {
-    const response = await fetch('/api/employees');
-    const data = await response.json();
-    setEmployees(data);
-  };
-
-  const fetchAbsences = async () => {
-    const response = await fetch('/api/absences');
-    const data = await response.json();
-    setAbsences(data);
-  };
-
-  const authUser = async (event) => {
-    event.preventDefault();
-    setLoginError('');
-
-    try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(loginForm)
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Erreur de connexion');
-      }
-
-      setSession(data.user);
-      await Promise.all([fetchDashboard(), fetchEmployees(), fetchAbsences()]);
-    } catch (error) {
-      setLoginError(error.message);
-    }
-  };
-
-  const logout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' });
-    setSession(null);
-    setLoginForm(loginDefaults);
-  };
-
-  const createEmployee = async (payload) => {
-    const response = await fetch('/api/employees', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (response.ok) {
-      await fetchEmployees();
-      await fetchDashboard();
-    }
-  };
-
-  const createAbsence = async (payload) => {
-    const response = await fetch('/api/absences', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
-
-    if (response.ok) {
-      await fetchAbsences();
-      await fetchDashboard();
-    }
-  };
+  async function refreshData() {
+    const [nextStats, nextEmployees, nextAbsences] = await Promise.all([
+      api('/api/dashboard'), api('/api/employees'), api('/api/absences')
+    ]);
+    setStats(nextStats);
+    setEmployees(nextEmployees);
+    setAbsences(nextAbsences);
+  }
 
   useEffect(() => {
-    fetchSession();
+    api('/api/auth/session')
+      .then(async (data) => {
+        if (data.authenticated) {
+          setSession(data.user);
+          await refreshData();
+        }
+      })
+      .catch(() => setAuthError('Impossible de joindre le serveur. Vérifiez qu’il est démarré puis réessayez.'))
+      .finally(() => setLoading(false));
   }, []);
 
-  if (isLoading) {
-    return <div className="loading-state">Chargement du tableau de bord...</div>;
+  async function login(credentials) {
+    setAuthError('');
+    setAuthBusy(true);
+    try {
+      const data = await api('/api/auth/login', { method: 'POST', body: JSON.stringify(credentials) });
+      await refreshData();
+      setSession(data.user);
+    } catch (error) {
+      setAuthError(error.message);
+    } finally {
+      setAuthBusy(false);
+    }
   }
 
-  if (!session) {
-    return (
-      <LoginScreen
-        form={loginForm}
-        onChange={(field, value) => setLoginForm((current) => ({ ...current, [field]: value }))}
-        onSubmit={authUser}
-        error={loginError}
-      />
-    );
+  async function logout() {
+    try { await api('/api/auth/logout', { method: 'POST' }); } finally { setSession(null); }
   }
 
-  return (
-    <Dashboard
-      user={session}
-      stats={dashboard}
-      employees={employees}
-      absences={absences}
-      onCreateEmployee={createEmployee}
-      onCreateAbsence={createAbsence}
-      onLogout={logout}
-    />
-  );
+  async function createEmployee(payload) {
+    await api('/api/employees', { method: 'POST', body: JSON.stringify(payload) });
+    await refreshData();
+  }
+
+  async function createAbsence(payload) {
+    await api('/api/absences', { method: 'POST', body: JSON.stringify(payload) });
+    await refreshData();
+  }
+
+  async function decideAbsence(id, status) {
+    await api(`/api/absences/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) });
+    await refreshData();
+  }
+
+  if (loading) return <div className="loading-state">Chargement de votre espace…</div>;
+  if (!session) return <LoginScreen onLogin={login} error={authError} busy={authBusy} />;
+  return <Dashboard user={session} stats={stats} employees={employees} absences={absences} onCreateEmployee={createEmployee} onCreateAbsence={createAbsence} onDecideAbsence={decideAbsence} onLogout={logout} />;
 }
