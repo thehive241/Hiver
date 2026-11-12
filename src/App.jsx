@@ -32,6 +32,15 @@ function statusBadge(status) {
   return 'neutral';
 }
 
+function ThemeButton({ darkMode, onToggle }) {
+  return (
+    <button className="theme-toggle" type="button" onClick={onToggle} aria-label={darkMode ? 'Activer le thème clair' : 'Activer le thème sombre'} title={darkMode ? 'Thème clair' : 'Thème sombre'}>
+      <span aria-hidden="true">{darkMode ? '☀' : '◐'}</span>
+      <span className="theme-toggle-label">{darkMode ? 'Clair' : 'Sombre'}</span>
+    </button>
+  );
+}
+
 function StatCard({ label, value, note, tone }) {
   return (
     <article className={`stat-card tone-${tone}`}>
@@ -42,7 +51,7 @@ function StatCard({ label, value, note, tone }) {
   );
 }
 
-function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreateAbsence, onDecideAbsence, onLogout }) {
+function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreateAbsence, onDecideAbsence, onLogout, darkMode, onToggleTheme }) {
   const [employeeForm, setEmployeeForm] = useState({ firstName: '', lastName: '', email: '', role: '', department: 'RH', status: 'active', startDate: '' });
   const [absenceForm, setAbsenceForm] = useState({ employeeId: String(user.id), type: 'Congé', startDate: '', endDate: '' });
   const [employeeSearch, setEmployeeSearch] = useState('');
@@ -72,6 +81,7 @@ function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreat
     try {
       await onCreateEmployee(employeeForm);
       setEmployeeForm({ firstName: '', lastName: '', email: '', role: '', department: 'RH', status: 'active', startDate: '' });
+      event.currentTarget.closest('details')?.removeAttribute('open');
     } catch (error) {
       setFormError(error.message);
     } finally {
@@ -86,6 +96,7 @@ function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreat
     try {
       await onCreateAbsence({ ...absenceForm, employeeId: Number(absenceForm.employeeId) });
       setAbsenceForm((current) => ({ ...current, startDate: '', endDate: '' }));
+      event.currentTarget.closest('details')?.removeAttribute('open');
     } catch (error) {
       setFormError(error.message);
     } finally {
@@ -103,7 +114,7 @@ function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreat
   }
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${darkMode ? ' dark-theme' : ''}`}>
       <aside className="sidebar">
         <a className="brand-block" href="#overview" aria-label="Hiver, accueil">
           <div className="brand-icon">h</div>
@@ -127,7 +138,7 @@ function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreat
       <main className="content">
         <header className="topbar" id="overview">
           <div><p className="eyebrow">TABLEAU DE BORD <span className="eyebrow-dot">/</span> VUE D’ENSEMBLE</p><h2>Bonjour, {user.firstName}<span className="title-period">.</span></h2><p className="page-subtitle">Voici ce qui se passe dans votre équipe aujourd’hui.</p></div>
-          <div className="topbar-actions"><div className="date-chip"><span>◷</span> Votre espace Hiver</div><div className="topbar-avatar" title={`${user.firstName} ${user.lastName}`}>{user.firstName?.[0]}{user.lastName?.[0]}</div></div>
+          <div className="topbar-actions"><ThemeButton darkMode={darkMode} onToggle={onToggleTheme} /><div className="date-chip"><span>◷</span> Votre espace Hiver</div><div className="topbar-avatar" title={`${user.firstName} ${user.lastName}`}>{user.firstName?.[0]}{user.lastName?.[0]}</div></div>
         </header>
 
         {formError && <p className="error-box" role="alert">{formError}</p>}
@@ -144,9 +155,7 @@ function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreat
             <div className="panel-header"><div><p className="panel-kicker">VOTRE ORGANISATION</p><h3>Équipe par service</h3></div><span className="panel-icon">◫</span></div>
             <div className="bars">
               {Object.entries(stats.departmentBreakdown).map(([department, count]) => (
-                <div key={department} className="bar-row">
-                  <label>{department}</label><div className="bar-track"><span style={{ width: `${(count / Math.max(stats.total, 1)) * 100}%` }} /></div><strong>{count}</strong>
-                </div>
+                <div key={department} className="bar-row"><label>{department}</label><div className="bar-track"><span style={{ width: `${(count / Math.max(stats.total, 1)) * 100}%` }} /></div><strong>{count}</strong></div>
               ))}
               {stats.total === 0 && <p className="empty-state">Aucune donnée à afficher.</p>}
             </div>
@@ -161,21 +170,19 @@ function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreat
 
         <section className="panel data-panel" id="employees">
           <div className="panel-header section-heading"><div><p className="panel-kicker">ANNUAIRE</p><h3>Votre équipe <span className="count-pill">{employees.length}</span></h3></div><span className="section-description">Les personnes qui font avancer les choses.</span></div>
-          {isAdmin && (
-            <details className="add-details"><summary><span className="add-symbol">＋</span> Ajouter un collaborateur</summary>
-              <form className="form-grid" onSubmit={submitEmployee}>
-                <input aria-label="Prénom" value={employeeForm.firstName} onChange={(e) => setEmployeeForm({ ...employeeForm, firstName: e.target.value })} placeholder="Prénom" required />
-                <input aria-label="Nom" value={employeeForm.lastName} onChange={(e) => setEmployeeForm({ ...employeeForm, lastName: e.target.value })} placeholder="Nom" required />
-                <input aria-label="Email" value={employeeForm.email} onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })} placeholder="Email professionnel" type="email" required />
-                <input aria-label="Poste" value={employeeForm.role} onChange={(e) => setEmployeeForm({ ...employeeForm, role: e.target.value })} placeholder="Poste" required />
-                <input aria-label="Service" value={employeeForm.department} onChange={(e) => setEmployeeForm({ ...employeeForm, department: e.target.value })} placeholder="Service" required />
-                <select aria-label="Statut" value={employeeForm.status} onChange={(e) => setEmployeeForm({ ...employeeForm, status: e.target.value })}><option value="active">Actif</option><option value="on_leave">En congé</option></select>
-                <input aria-label="Date d’embauche" value={employeeForm.startDate} onChange={(e) => setEmployeeForm({ ...employeeForm, startDate: e.target.value })} type="date" />
-                <button type="submit" disabled={busy}>{busy ? 'Enregistrement…' : 'Ajouter à l’équipe'}</button>
-              </form>
-            </details>
-          )}
-          <div className="toolbar"><label className="search-box"><span>⌕</span><input type="search" aria-label="Rechercher un employé" value={employeeSearch} onChange={(e) => setEmployeeSearch(e.target.value)} placeholder="Rechercher par nom, email ou service" /></label></div>
+          {isAdmin && <details className="add-details"><summary><span className="add-symbol">＋</span> Ajouter un collaborateur</summary>
+            <form className="form-grid" onSubmit={submitEmployee}>
+              <input aria-label="Prénom" value={employeeForm.firstName} onChange={(e) => setEmployeeForm({ ...employeeForm, firstName: e.target.value })} placeholder="Prénom" required />
+              <input aria-label="Nom" value={employeeForm.lastName} onChange={(e) => setEmployeeForm({ ...employeeForm, lastName: e.target.value })} placeholder="Nom" required />
+              <input aria-label="Email" value={employeeForm.email} onChange={(e) => setEmployeeForm({ ...employeeForm, email: e.target.value })} placeholder="Email professionnel" type="email" required />
+              <input aria-label="Poste" value={employeeForm.role} onChange={(e) => setEmployeeForm({ ...employeeForm, role: e.target.value })} placeholder="Poste" required />
+              <input aria-label="Service" value={employeeForm.department} onChange={(e) => setEmployeeForm({ ...employeeForm, department: e.target.value })} placeholder="Service" required />
+              <select aria-label="Statut" value={employeeForm.status} onChange={(e) => setEmployeeForm({ ...employeeForm, status: e.target.value })}><option value="active">Actif</option><option value="on_leave">En congé</option></select>
+              <input aria-label="Date d’embauche" value={employeeForm.startDate} onChange={(e) => setEmployeeForm({ ...employeeForm, startDate: e.target.value })} type="date" />
+              <button type="submit" disabled={busy}>{busy ? 'Enregistrement…' : 'Ajouter à l’équipe'}</button>
+            </form>
+          </details>}
+          <div className="toolbar"><label className="search-box"><span>⌕</span><input type="search" aria-label="Rechercher un employé" value={employeeSearch} onChange={(e) => setEmployeeSearch(e.target.value)} placeholder="Rechercher par nom, email ou service" /></label><span className="results-count">{filteredEmployees.length} résultat{filteredEmployees.length === 1 ? '' : 's'}</span></div>
           <div className="table-wrap"><table>
             <thead><tr><th>Collaborateur</th><th>Poste</th><th>Service</th><th>Email</th><th>Statut</th></tr></thead>
             <tbody>{filteredEmployees.length ? filteredEmployees.map((employee) => (
@@ -197,10 +204,7 @@ function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreat
             </form>
             <p className="form-hint">Les nouvelles demandes sont enregistrées « En attente » et doivent être validées par un administrateur.</p>
           </details>
-          <div className="toolbar absence-toolbar">
-            <label className="search-box"><span>⌕</span><input type="search" aria-label="Rechercher une demande" value={absenceSearch} onChange={(e) => setAbsenceSearch(e.target.value)} placeholder="Rechercher une demande" /></label>
-            <select aria-label="Filtrer par statut" value={absenceFilter} onChange={(e) => setAbsenceFilter(e.target.value)}><option value="all">Tous les statuts</option><option>En attente</option><option>Approuvée</option><option>Refusée</option></select>
-          </div>
+          <div className="toolbar absence-toolbar"><label className="search-box"><span>⌕</span><input type="search" aria-label="Rechercher une demande" value={absenceSearch} onChange={(e) => setAbsenceSearch(e.target.value)} placeholder="Rechercher une demande" /></label><select aria-label="Filtrer par statut" value={absenceFilter} onChange={(e) => setAbsenceFilter(e.target.value)}><option value="all">Tous les statuts</option><option>En attente</option><option>Approuvée</option><option>Refusée</option></select><span className="results-count">{filteredAbsences.length} résultat{filteredAbsences.length === 1 ? '' : 's'}</span></div>
           <div className="table-wrap"><table>
             <thead><tr><th>Collaborateur</th><th>Type</th><th>Début</th><th>Fin</th><th>Statut</th>{isAdmin && <th>Décision</th>}</tr></thead>
             <tbody>{filteredAbsences.length ? filteredAbsences.map((absence) => (
@@ -214,21 +218,25 @@ function Dashboard({ user, stats, employees, absences, onCreateEmployee, onCreat
   );
 }
 
-function LoginScreen({ onLogin, error, busy }) {
+function LoginScreen({ onLogin, error, busy, darkMode, onToggleTheme }) {
   const [email, setEmail] = useState('admin@hiver.fr');
   const [password, setPassword] = useState('admin123');
   return (
-    <div className="login-shell"><div className="login-card">
-      <a className="brand-block login-brand" href="#login"><div className="brand-icon">h</div><div><h1>hiver<span className="brand-period">.</span></h1><span>Votre espace RH</span></div></a>
-      <p className="panel-kicker">BIENVENUE CHEZ HIVER</p><h2>Heureux de vous revoir.</h2><p className="login-subtitle">Connectez-vous pour retrouver votre équipe et votre espace de travail.</p>
-      <form onSubmit={(event) => { event.preventDefault(); onLogin({ email, password }); }} className="login-form">
-        <label>Email professionnel<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
-        <label>Mot de passe<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-        {error && <div className="error-box" role="alert">{error}</div>}
-        <button type="submit" disabled={busy}>{busy ? 'Connexion…' : 'Se connecter'} <span>→</span></button>
-      </form>
-      <div className="demo-credentials"><p>Comptes de démonstration</p><small>admin@hiver.fr / admin123</small><small>employee@hiver.fr / employee123</small><small>Ces comptes sont prévus uniquement pour la démonstration.</small></div>
-    </div><div className="login-aside"><span className="login-orb orb-one" /><span className="login-orb orb-two" /><div className="login-quote-mark">“</div><blockquote>Prendre soin de celles et ceux qui font grandir l’entreprise.</blockquote><p>Le travail, en mieux.</p><span className="login-aside-brand">hiver<span>.</span></span></div></div>
+    <div className={`login-shell${darkMode ? ' dark-theme' : ''}`}>
+      <div className="login-theme-control"><ThemeButton darkMode={darkMode} onToggle={onToggleTheme} /></div>
+      <div className="login-card">
+        <a className="brand-block login-brand" href="#login"><div className="brand-icon">h</div><div><h1>hiver<span className="brand-period">.</span></h1><span>Votre espace RH</span></div></a>
+        <p className="panel-kicker">BIENVENUE CHEZ HIVER</p><h2>Heureux de vous revoir.</h2><p className="login-subtitle">Connectez-vous pour retrouver votre équipe et votre espace de travail.</p>
+        <form onSubmit={(event) => { event.preventDefault(); onLogin({ email, password }); }} className="login-form">
+          <label>Email professionnel<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+          <label>Mot de passe<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+          {error && <div className="error-box" role="alert">{error}</div>}
+          <button type="submit" disabled={busy}>{busy ? 'Connexion…' : 'Se connecter'} <span>→</span></button>
+        </form>
+        <div className="demo-credentials"><p>Comptes de démonstration</p><small>admin@hiver.fr / admin123</small><small>employee@hiver.fr / employee123</small><small>Ces comptes sont prévus uniquement pour la démonstration.</small></div>
+      </div>
+      <div className="login-aside"><span className="login-orb orb-one" /><span className="login-orb orb-two" /><div className="login-quote-mark">“</div><blockquote>Prendre soin de celles et ceux qui font grandir l’entreprise.</blockquote><p>Le travail, en mieux.</p><span className="login-aside-brand">hiver<span>.</span></span></div>
+    </div>
   );
 }
 
@@ -240,6 +248,13 @@ export default function App() {
   const [stats, setStats] = useState(initialStats);
   const [employees, setEmployees] = useState([]);
   const [absences, setAbsences] = useState([]);
+  const [darkMode, setDarkMode] = useState(() => {
+    try { return localStorage.getItem('hiver-theme') === 'dark'; } catch { return false; }
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('hiver-theme', darkMode ? 'dark' : 'light'); } catch { /* Storage is optional. */ }
+  }, [darkMode]);
 
   async function refreshData() {
     const [nextStats, nextEmployees, nextAbsences] = await Promise.all([
@@ -295,7 +310,8 @@ export default function App() {
     await refreshData();
   }
 
+  const toggleTheme = () => setDarkMode((current) => !current);
   if (loading) return <div className="loading-state"><span className="loading-mark">h</span><span>Votre espace prend vie…</span></div>;
-  if (!session) return <LoginScreen onLogin={login} error={authError} busy={authBusy} />;
-  return <Dashboard user={session} stats={stats} employees={employees} absences={absences} onCreateEmployee={createEmployee} onCreateAbsence={createAbsence} onDecideAbsence={decideAbsence} onLogout={logout} />;
+  if (!session) return <LoginScreen onLogin={login} error={authError} busy={authBusy} darkMode={darkMode} onToggleTheme={toggleTheme} />;
+  return <Dashboard user={session} stats={stats} employees={employees} absences={absences} onCreateEmployee={createEmployee} onCreateAbsence={createAbsence} onDecideAbsence={decideAbsence} onLogout={logout} darkMode={darkMode} onToggleTheme={toggleTheme} />;
 }
