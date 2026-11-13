@@ -1,24 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
-import Journaliers from './Journaliers';
+import Portal from './Portal';
 import './styles.css';
 import './journaliers.css';
+import './portal.css';
 
-function Workspace() {
-  const [section, setSection] = useState('journaliers');
-  return (
-    <>
-      <nav className="workspace-nav" aria-label="Modules Hiver">
-        <strong>Hiver RH</strong>
-        <button type="button" className={section === 'journaliers' ? 'selected' : ''} onClick={() => setSection('journaliers')}>Journaliers</button>
-        <button type="button" className={section === 'rh' ? 'selected' : ''} onClick={() => setSection('rh')}>Espace RH</button>
-      </nav>
-      {section === 'journaliers' ? <Journaliers /> : <App />}
-    </>
-  );
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode><Workspace /></React.StrictMode>
+  <React.StrictMode><Portal /></React.StrictMode>
 );
